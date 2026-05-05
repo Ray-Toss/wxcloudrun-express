@@ -7,15 +7,15 @@
   "dockerfilePath": "Dockerfile",
   "buildDir": "",
   "minNum": 0,
-  "maxNum": 5,
-  "cpu": 1,
-  "mem": 2,
+  "maxNum": 1,
+  "cpu": 0.25,
+  "mem": 0.5,
   "policyType": "cpu",
-  "policyThreshold": 80,
+  "policyThreshold": 60,
   "policyDetails": [
 	{
 		"PolicyType": "cpu",
-		"PolicyThreshold": 80
+		"PolicyThreshold": 60
 	},
 	{
 		"PolicyType": "mem",
