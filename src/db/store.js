@@ -39,6 +39,8 @@ class MemoryStore {
       best_wave_gain: 0,
       revived: false,
     };
+    if (score.nickname) current.nickname = score.nickname;
+    if (score.avatar) current.avatar = score.avatar;
     if (score.score > current.best_score) {
       current.best_score = score.score;
       current.best_round = score.round;
@@ -58,6 +60,7 @@ class MemoryStore {
         rank: index + 1,
         openid: item.openid,
         nickname: item.nickname || "",
+        avatar: item.avatar || "",
         score: item.best_score,
         round: item.best_round,
         bestWaveGain: item.best_wave_gain,
@@ -99,21 +102,23 @@ class MysqlStore {
 
   async upsertScore(openid, score) {
     await this.pool.execute(`
-      INSERT INTO players (openid, best_score, best_round, best_wave_gain, revived)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO players (openid, nickname, avatar, best_score, best_round, best_wave_gain, revived)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
+        nickname = IF(VALUES(nickname) <> '', VALUES(nickname), nickname),
+        avatar = IF(VALUES(avatar) <> '', VALUES(avatar), avatar),
         best_round = IF(VALUES(best_score) > best_score, VALUES(best_round), best_round),
         best_wave_gain = IF(VALUES(best_score) > best_score, VALUES(best_wave_gain), best_wave_gain),
         revived = IF(VALUES(best_score) > best_score, VALUES(revived), revived),
         best_score = GREATEST(best_score, VALUES(best_score))
-    `, [openid, score.score, score.round, score.bestWaveGain, score.revived ? 1 : 0]);
+    `, [openid, score.nickname, score.avatar, score.score, score.round, score.bestWaveGain, score.revived ? 1 : 0]);
     const [rows] = await this.pool.execute("SELECT * FROM players WHERE openid = ?", [openid]);
     return rows[0] || null;
   }
 
   async leaderboard(limit) {
     const [rows] = await this.pool.execute(`
-      SELECT openid, nickname, best_score, best_round, best_wave_gain, updated_at
+      SELECT openid, nickname, avatar, best_score, best_round, best_wave_gain, updated_at
       FROM players
       ORDER BY best_score DESC, updated_at ASC
       LIMIT ?
@@ -122,6 +127,7 @@ class MysqlStore {
       rank: index + 1,
       openid: item.openid,
       nickname: item.nickname || "",
+      avatar: item.avatar || "",
       score: item.best_score,
       round: item.best_round,
       bestWaveGain: item.best_wave_gain,
@@ -144,6 +150,7 @@ class MysqlStore {
       rank: rankRows[0].rank,
       openid,
       nickname: player.nickname || "",
+      avatar: player.avatar || "",
       score: player.best_score,
       round: player.best_round,
       bestWaveGain: player.best_wave_gain,

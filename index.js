@@ -81,6 +81,8 @@ function cleanScore(input) {
     round: Math.max(1, Math.min(9999, Math.floor(Number(input.round) || 1))),
     bestWaveGain: Math.max(0, Math.min(999999999, Math.floor(Number(input.bestWaveGain) || 0))),
     revived: !!input.revived,
+    nickname: String(input.nickname || "").trim().slice(0, 64),
+    avatar: String(input.avatar || "").trim().slice(0, 512),
   };
 }
 
