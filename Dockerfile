@@ -15,6 +15,8 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tencent.com/g' /etc/apk/repositorie
 # # 指定工作目录
 WORKDIR /app
 
+ENV NODE_ENV=production
+
 # 拷贝包管理文件
 COPY package*.json /app/
 

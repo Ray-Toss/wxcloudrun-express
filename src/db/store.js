@@ -7,23 +7,6 @@ try {
   mysql = null;
 }
 
-function mysqlConfig() {
-  const address = process.env.MYSQL_ADDRESS || "";
-  const [addressHost, addressPort] = address.split(":");
-  const host = process.env.MYSQL_HOST || addressHost || "";
-  if (!host) return null;
-  return {
-    host,
-    port: Number(process.env.MYSQL_PORT || addressPort || 3306),
-    user: process.env.MYSQL_USER || process.env.MYSQL_USERNAME || "root",
-    password: process.env.MYSQL_PASSWORD || "",
-    database: process.env.MYSQL_DATABASE || process.env.MYSQL_DATABASE_NAME || "nodejs_demo",
-    waitForConnections: true,
-    connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 4),
-    charset: "utf8mb4",
-  };
-}
-
 class MemoryStore {
   constructor() {
     this.players = new Map();
@@ -32,13 +15,7 @@ class MemoryStore {
   async init() {}
 
   async upsertScore(openid, score) {
-    const current = this.players.get(openid) || {
-      openid,
-      best_score: 0,
-      best_round: 1,
-      best_wave_gain: 0,
-      revived: false,
-    };
+    const current = this.players.get(openid) || { openid, best_score: 0, best_round: 1, best_wave_gain: 0, revived: false };
     if (score.nickname) current.nickname = score.nickname;
     if (score.avatar) current.avatar = score.avatar;
     if (score.score > current.best_score) {
@@ -68,6 +45,15 @@ class MemoryStore {
       }));
   }
 
+  async updateProfile(openid, profile) {
+    const current = this.players.get(openid);
+    if (!current) return null;
+    if (profile.nickname) current.nickname = profile.nickname;
+    if (profile.avatar) current.avatar = profile.avatar;
+    this.players.set(openid, current);
+    return current;
+  }
+
   async myRank(openid) {
     const rows = await this.leaderboard(this.players.size || 1);
     const index = rows.findIndex((item) => item.openid === openid);
@@ -76,8 +62,19 @@ class MemoryStore {
 }
 
 class MysqlStore {
-  constructor(config) {
-    this.pool = mysql.createPool(config);
+  constructor() {
+    const address = process.env.MYSQL_ADDRESS || "";
+    const [addressHost, addressPort] = address.split(":");
+    this.pool = mysql.createPool({
+      host: process.env.MYSQL_HOST || addressHost || "127.0.0.1",
+      port: Number(process.env.MYSQL_PORT || addressPort || 3306),
+      user: process.env.MYSQL_USER || process.env.MYSQL_USERNAME || "root",
+      password: process.env.MYSQL_PASSWORD || "",
+      database: process.env.MYSQL_DATABASE || process.env.MYSQL_DATABASE_NAME || "nodejs_demo",
+      waitForConnections: true,
+      connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 4),
+      charset: "utf8mb4",
+    });
   }
 
   async init() {
@@ -135,6 +132,18 @@ class MysqlStore {
     }));
   }
 
+  async updateProfile(openid, profile) {
+    await this.pool.execute(`
+      UPDATE players
+      SET
+        nickname = IF(? <> '', ?, nickname),
+        avatar = IF(? <> '', ?, avatar)
+      WHERE openid = ?
+    `, [profile.nickname, profile.nickname, profile.avatar, profile.avatar, openid]);
+    const [rows] = await this.pool.execute("SELECT * FROM players WHERE openid = ?", [openid]);
+    return rows[0] || null;
+  }
+
   async myRank(openid) {
     const [mine] = await this.pool.execute("SELECT best_score, updated_at FROM players WHERE openid = ?", [openid]);
     if (!mine.length) return null;
@@ -160,8 +169,7 @@ class MysqlStore {
 }
 
 function createStore() {
-  const config = mysqlConfig();
-  if (config && mysql) return new MysqlStore(config);
+  if ((process.env.MYSQL_HOST || process.env.MYSQL_ADDRESS) && mysql) return new MysqlStore();
   return new MemoryStore();
 }
 

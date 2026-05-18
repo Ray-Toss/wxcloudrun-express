@@ -7,9 +7,17 @@ const { createStore } = require("./src/db/store.js");
 const app = express();
 const store = createStore();
 const port = Number(process.env.PORT || 80);
-const tokenSecret = process.env.RANK_TOKEN_SECRET || "brickrogue-dev-secret";
+const tokenSecret = resolveTokenSecret();
 
 app.use(express.json({ limit: "64kb" }));
+
+function resolveTokenSecret() {
+  if (process.env.RANK_TOKEN_SECRET) return process.env.RANK_TOKEN_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("RANK_TOKEN_SECRET is required in production");
+  }
+  return "brickrogue-dev-secret";
+}
 
 function sign(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -86,12 +94,12 @@ function cleanScore(input) {
   };
 }
 
-app.get("/", (req, res) => {
-  res.json({ ok: true, service: "brickrogue-rank" });
-});
-
 app.get("/healthz", (req, res) => {
   res.json({ ok: true });
+});
+
+app.get("/", (req, res) => {
+  res.json({ ok: true, service: "brickrogue-rank" });
 });
 
 app.post("/api/login", async (req, res) => {
@@ -114,7 +122,17 @@ app.post("/api/score", auth, async (req, res) => {
   }
 });
 
-app.get("/api/leaderboard", auth, async (req, res) => {
+app.post("/api/profile", auth, async (req, res) => {
+  try {
+    const profile = cleanScore(req.body || {});
+    const player = await store.updateProfile(req.openid, profile);
+    res.json({ ok: true, player });
+  } catch (error) {
+    res.status(500).json({ ok: false, errMsg: error.message || "profile update failed" });
+  }
+});
+
+app.get("/api/leaderboard", async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(100, Math.floor(Number(req.query.limit) || 50)));
     const list = await store.leaderboard(limit);
