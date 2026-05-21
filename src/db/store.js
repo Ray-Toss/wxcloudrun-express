@@ -7,6 +7,19 @@ try {
   mysql = null;
 }
 
+function publicPlayer(item, rank) {
+  const source = item || {};
+  return {
+    rank,
+    nickname: String(source.nickname || "").trim().slice(0, 64),
+    avatar: String(source.avatar || "").trim().slice(0, 512),
+    score: Math.max(0, Math.floor(Number(source.best_score || source.score) || 0)),
+    round: Math.max(1, Math.floor(Number(source.best_round || source.round) || 1)),
+    bestWaveGain: Math.max(0, Math.floor(Number(source.best_wave_gain || source.bestWaveGain) || 0)),
+    updatedAt: source.updated_at || source.updatedAt || "",
+  };
+}
+
 class MemoryStore {
   constructor() {
     this.players = new Map();
@@ -33,16 +46,7 @@ class MemoryStore {
     return [...this.players.values()]
       .sort((a, b) => b.best_score - a.best_score)
       .slice(0, limit)
-      .map((item, index) => ({
-        rank: index + 1,
-        openid: item.openid,
-        nickname: item.nickname || "",
-        avatar: item.avatar || "",
-        score: item.best_score,
-        round: item.best_round,
-        bestWaveGain: item.best_wave_gain,
-        updatedAt: item.updated_at || "",
-      }));
+      .map((item, index) => publicPlayer(item, index + 1));
   }
 
   async updateProfile(openid, profile) {
@@ -120,16 +124,7 @@ class MysqlStore {
       ORDER BY best_score DESC, updated_at ASC
       LIMIT ?
     `, [limit]);
-    return rows.map((item, index) => ({
-      rank: index + 1,
-      openid: item.openid,
-      nickname: item.nickname || "",
-      avatar: item.avatar || "",
-      score: item.best_score,
-      round: item.best_round,
-      bestWaveGain: item.best_wave_gain,
-      updatedAt: item.updated_at,
-    }));
+    return rows.map((item, index) => publicPlayer(item, index + 1));
   }
 
   async updateProfile(openid, profile) {
@@ -155,16 +150,7 @@ class MysqlStore {
     `, [mine[0].best_score, mine[0].best_score, mine[0].updated_at]);
     const [playerRows] = await this.pool.execute("SELECT * FROM players WHERE openid = ?", [openid]);
     const player = playerRows[0];
-    return {
-      rank: rankRows[0].rank,
-      openid,
-      nickname: player.nickname || "",
-      avatar: player.avatar || "",
-      score: player.best_score,
-      round: player.best_round,
-      bestWaveGain: player.best_wave_gain,
-      updatedAt: player.updated_at,
-    };
+    return publicPlayer(player, rankRows[0].rank);
   }
 }
 
@@ -173,4 +159,4 @@ function createStore() {
   return new MemoryStore();
 }
 
-module.exports = { createStore };
+module.exports = { createStore, publicPlayer };

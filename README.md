@@ -18,6 +18,8 @@
 RANK_TOKEN_SECRET=一串足够长的随机密钥
 ```
 
+生产环境必须配置 `RANK_TOKEN_SECRET`，并且不要配置 `ALLOW_MOCK_LOGIN=1`。
+
 云托管通过 `wx.cloud.callContainer` 调用时，服务端会优先读取请求头中的
 `x-wx-openid` / `x-wx-from-openid`，因此不强制依赖 `WECHAT_APPID` 和
 `WECHAT_SECRET`。
@@ -43,3 +45,12 @@ MYSQL_DATABASE=nodejs_demo
 ```
 
 没有数据库配置时会使用内存榜，只适合测试，服务重启后数据会丢失。
+
+## 安全策略
+
+- `/api/leaderboard` 和 `/api/me/rank` 不返回 `openid`。
+- `/api/score` 会校验分数、波次和单波最高得分的基础合理性。
+- 同一 `openid` 默认 10 秒内最多提交一次分数，可通过
+  `SCORE_SUBMIT_INTERVAL_MS` 调整。
+- 分数默认上限为 `5000000`，可通过 `MAX_REASONABLE_SCORE` 调整。
+- `ALLOW_MOCK_LOGIN=1` 仅在非生产环境生效。
