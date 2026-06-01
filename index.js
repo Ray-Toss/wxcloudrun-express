@@ -210,8 +210,10 @@ app.get("/api/leaderboard", async (req, res) => {
 
 app.get("/api/me/rank", auth, async (req, res) => {
   try {
-    const rank = await store.myRank(req.openid);
-    res.json({ ok: true, rank });
+    const period = req.query.period === "history" ? "history" : "weekly";
+    const weekKey = currentWeekKey();
+    const rank = await store.myRank(req.openid, period, weekKey);
+    res.json({ ok: true, rank, period, weekKey });
   } catch (error) {
     res.status(500).json({ ok: false, errMsg: error.message || "rank failed" });
   }

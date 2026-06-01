@@ -92,10 +92,33 @@ class MemoryStore {
     return current;
   }
 
-  async myRank(openid) {
-    const rows = await this.leaderboard(this.players.size || 1);
-    const index = rows.findIndex((item) => item.openid === openid);
-    return index >= 0 ? rows[index] : null;
+  async myRank(openid, period, weekKey) {
+    const rows = [...this.players.values()];
+    let sorted = rows;
+    let target = this.players.get(openid);
+    if (period === "weekly") {
+      if (!target || target.week_key !== weekKey || !target.week_score) return null;
+      sorted = rows
+        .filter((item) => item.week_key === weekKey && item.week_score > 0)
+        .sort((a, b) => b.week_score - a.week_score);
+      const index = sorted.findIndex((item) => item.openid === openid);
+      if (index < 0) return null;
+      target = sorted[index];
+      return publicPlayer({
+        ...target,
+        best_score: target.week_score,
+        best_round: target.week_round,
+        best_wave_gain: target.week_best_wave_gain,
+        revived: target.week_revived,
+        updated_at: target.week_updated_at,
+      }, index + 1);
+    }
+    if (!target || !target.best_score) return null;
+    sorted = rows
+      .filter((item) => item.best_score > 0)
+      .sort((a, b) => b.best_score - a.best_score);
+    const index = sorted.findIndex((item) => item.openid === openid);
+    return index >= 0 ? publicPlayer(sorted[index], index + 1) : null;
   }
 }
 
@@ -240,8 +263,38 @@ class MysqlStore {
     return rows[0] || null;
   }
 
-  async myRank(openid) {
-    const [mine] = await this.pool.execute("SELECT best_score, updated_at FROM players WHERE openid = ?", [openid]);
+  async myRank(openid, period, weekKey) {
+    if (period === "weekly") {
+      const [mine] = await this.pool.execute(
+        "SELECT week_score, week_updated_at FROM players WHERE openid = ? AND week_key = ? AND week_score > 0",
+        [openid, weekKey]
+      );
+      if (!mine.length) return null;
+      const [rankRows] = await this.pool.execute(`
+        SELECT COUNT(*) + 1 AS rank
+        FROM players
+        WHERE week_key = ?
+          AND week_score > 0
+          AND (
+            week_score > ?
+            OR (week_score = ? AND week_updated_at < ?)
+          )
+      `, [weekKey, mine[0].week_score, mine[0].week_score, mine[0].week_updated_at]);
+      const [playerRows] = await this.pool.execute(`
+        SELECT
+          openid,
+          nickname,
+          avatar,
+          week_score AS best_score,
+          week_round AS best_round,
+          week_best_wave_gain AS best_wave_gain,
+          week_updated_at AS updated_at
+        FROM players
+        WHERE openid = ? AND week_key = ?
+      `, [openid, weekKey]);
+      return playerRows.length ? publicPlayer(playerRows[0], rankRows[0].rank) : null;
+    }
+    const [mine] = await this.pool.execute("SELECT best_score, updated_at FROM players WHERE openid = ? AND best_score > 0", [openid]);
     if (!mine.length) return null;
     const [rankRows] = await this.pool.execute(`
       SELECT COUNT(*) + 1 AS rank
