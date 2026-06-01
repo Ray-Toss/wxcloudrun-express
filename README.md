@@ -10,6 +10,13 @@
 - `GET /api/leaderboard`
 - `GET /api/me/rank`
 
+`/api/leaderboard` 默认返回本周榜，可通过 `period=history` 读取历史榜：
+
+```text
+GET /api/leaderboard?period=weekly&limit=50
+GET /api/leaderboard?period=history&limit=50
+```
+
 ## 环境变量
 
 必填：
@@ -50,6 +57,7 @@ MYSQL_DATABASE=nodejs_demo
 
 - `/api/leaderboard` 和 `/api/me/rank` 不返回 `openid`。
 - `/api/score` 会校验分数、波次和单波最高得分的基础合理性。
+- `/api/score` 会同时更新历史最高分和北京时间自然周周榜分数。
 - 同一 `openid` 默认 10 秒内最多提交一次分数，可通过
   `SCORE_SUBMIT_INTERVAL_MS` 调整。
 - 分数默认上限为 `5000000`，可通过 `MAX_REASONABLE_SCORE` 调整。

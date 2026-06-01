@@ -99,6 +99,20 @@ function cleanScore(input) {
   };
 }
 
+function currentWeekKey(date) {
+  const source = date || new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const chinaTime = source.getTime() + 8 * 60 * 60 * 1000;
+  const chinaDate = new Date(chinaTime);
+  const day = chinaDate.getUTCDay();
+  const daysSinceMonday = (day + 6) % 7;
+  const monday = new Date(chinaTime - daysSinceMonday * dayMs);
+  const year = monday.getUTCFullYear();
+  const month = String(monday.getUTCMonth() + 1).padStart(2, "0");
+  const dateOfMonth = String(monday.getUTCDate()).padStart(2, "0");
+  return `${year}${month}${dateOfMonth}`;
+}
+
 function validateScore(score) {
   if (!Number.isFinite(score.score) || !Number.isFinite(score.round) || !Number.isFinite(score.bestWaveGain)) {
     return "invalid score payload";
@@ -154,6 +168,7 @@ app.post("/api/login", async (req, res) => {
 app.post("/api/score", auth, async (req, res) => {
   try {
     const score = cleanScore(req.body || {});
+    score.weekKey = currentWeekKey();
     const scoreError = validateScore(score);
     if (scoreError) {
       res.status(400).json({ ok: false, errMsg: scoreError });
@@ -184,8 +199,10 @@ app.post("/api/profile", auth, async (req, res) => {
 app.get("/api/leaderboard", async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(100, Math.floor(Number(req.query.limit) || 50)));
-    const list = await store.leaderboard(limit);
-    res.json({ ok: true, list });
+    const period = req.query.period === "history" ? "history" : "weekly";
+    const weekKey = currentWeekKey();
+    const list = await store.leaderboard(limit, period, weekKey);
+    res.json({ ok: true, list, period, weekKey });
   } catch (error) {
     res.status(500).json({ ok: false, errMsg: error.message || "leaderboard failed" });
   }

@@ -28,7 +28,18 @@ class MemoryStore {
   async init() {}
 
   async upsertScore(openid, score) {
-    const current = this.players.get(openid) || { openid, best_score: 0, best_round: 1, best_wave_gain: 0, revived: false };
+    const current = this.players.get(openid) || {
+      openid,
+      best_score: 0,
+      best_round: 1,
+      best_wave_gain: 0,
+      revived: false,
+      week_key: "",
+      week_score: 0,
+      week_round: 1,
+      week_best_wave_gain: 0,
+      week_revived: false,
+    };
     if (score.nickname) current.nickname = score.nickname;
     if (score.avatar) current.avatar = score.avatar;
     if (score.score > current.best_score) {
@@ -38,12 +49,35 @@ class MemoryStore {
       current.revived = !!score.revived;
       current.updated_at = new Date().toISOString();
     }
+    if (score.weekKey && (current.week_key !== score.weekKey || score.score > current.week_score)) {
+      current.week_key = score.weekKey;
+      current.week_score = score.score;
+      current.week_round = score.round;
+      current.week_best_wave_gain = score.bestWaveGain;
+      current.week_revived = !!score.revived;
+      current.week_updated_at = new Date().toISOString();
+    }
     this.players.set(openid, current);
     return current;
   }
 
-  async leaderboard(limit) {
-    return [...this.players.values()]
+  async leaderboard(limit, period, weekKey) {
+    const rows = [...this.players.values()];
+    if (period === "weekly") {
+      return rows
+        .filter((item) => item.week_key === weekKey && item.week_score > 0)
+        .sort((a, b) => b.week_score - a.week_score)
+        .slice(0, limit)
+        .map((item, index) => publicPlayer({
+          ...item,
+          best_score: item.week_score,
+          best_round: item.week_round,
+          best_wave_gain: item.week_best_wave_gain,
+          revived: item.week_revived,
+          updated_at: item.week_updated_at,
+        }, index + 1));
+    }
+    return rows
       .sort((a, b) => b.best_score - a.best_score)
       .slice(0, limit)
       .map((item, index) => publicPlayer(item, index + 1));
@@ -99,28 +133,95 @@ class MysqlStore {
         KEY idx_score (best_score DESC, updated_at ASC)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    await this.ensureColumn("week_key", "VARCHAR(16) NOT NULL DEFAULT ''");
+    await this.ensureColumn("week_score", "INT UNSIGNED NOT NULL DEFAULT 0");
+    await this.ensureColumn("week_round", "INT UNSIGNED NOT NULL DEFAULT 1");
+    await this.ensureColumn("week_best_wave_gain", "INT UNSIGNED NOT NULL DEFAULT 0");
+    await this.ensureColumn("week_revived", "TINYINT(1) NOT NULL DEFAULT 0");
+    await this.ensureColumn("week_updated_at", "TIMESTAMP NULL DEFAULT NULL");
+    await this.ensureIndex("idx_week_score", "week_key, week_score DESC, week_updated_at ASC");
+  }
+
+  async ensureColumn(name, definition) {
+    const [rows] = await this.pool.execute("SHOW COLUMNS FROM players LIKE ?", [name]);
+    if (rows.length) return;
+    await this.pool.query(`ALTER TABLE players ADD COLUMN ${name} ${definition}`);
+  }
+
+  async ensureIndex(name, columns) {
+    const [rows] = await this.pool.execute(`
+      SELECT 1
+      FROM information_schema.statistics
+      WHERE table_schema = DATABASE()
+        AND table_name = 'players'
+        AND index_name = ?
+      LIMIT 1
+    `, [name]);
+    if (rows.length) return;
+    await this.pool.query(`ALTER TABLE players ADD KEY ${name} (${columns})`);
   }
 
   async upsertScore(openid, score) {
     await this.pool.execute(`
-      INSERT INTO players (openid, nickname, avatar, best_score, best_round, best_wave_gain, revived)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO players (
+        openid, nickname, avatar,
+        best_score, best_round, best_wave_gain, revived,
+        week_key, week_score, week_round, week_best_wave_gain, week_revived, week_updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON DUPLICATE KEY UPDATE
         nickname = IF(VALUES(nickname) <> '', VALUES(nickname), nickname),
         avatar = IF(VALUES(avatar) <> '', VALUES(avatar), avatar),
         best_round = IF(VALUES(best_score) > best_score, VALUES(best_round), best_round),
         best_wave_gain = IF(VALUES(best_score) > best_score, VALUES(best_wave_gain), best_wave_gain),
         revived = IF(VALUES(best_score) > best_score, VALUES(revived), revived),
-        best_score = GREATEST(best_score, VALUES(best_score))
-    `, [openid, score.nickname, score.avatar, score.score, score.round, score.bestWaveGain, score.revived ? 1 : 0]);
+        best_score = GREATEST(best_score, VALUES(best_score)),
+        week_round = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, VALUES(week_round), week_round),
+        week_best_wave_gain = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, VALUES(week_best_wave_gain), week_best_wave_gain),
+        week_revived = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, VALUES(week_revived), week_revived),
+        week_updated_at = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, CURRENT_TIMESTAMP, week_updated_at),
+        week_score = IF(week_key <> VALUES(week_key), VALUES(week_score), GREATEST(week_score, VALUES(week_score))),
+        week_key = VALUES(week_key)
+    `, [
+      openid,
+      score.nickname,
+      score.avatar,
+      score.score,
+      score.round,
+      score.bestWaveGain,
+      score.revived ? 1 : 0,
+      score.weekKey || "",
+      score.score,
+      score.round,
+      score.bestWaveGain,
+      score.revived ? 1 : 0,
+    ]);
     const [rows] = await this.pool.execute("SELECT * FROM players WHERE openid = ?", [openid]);
     return rows[0] || null;
   }
 
-  async leaderboard(limit) {
+  async leaderboard(limit, period, weekKey) {
+    if (period === "weekly") {
+      const [rows] = await this.pool.execute(`
+        SELECT
+          openid,
+          nickname,
+          avatar,
+          week_score AS best_score,
+          week_round AS best_round,
+          week_best_wave_gain AS best_wave_gain,
+          week_updated_at AS updated_at
+        FROM players
+        WHERE week_key = ? AND week_score > 0
+        ORDER BY week_score DESC, week_updated_at ASC
+        LIMIT ?
+      `, [weekKey, limit]);
+      return rows.map((item, index) => publicPlayer(item, index + 1));
+    }
     const [rows] = await this.pool.execute(`
       SELECT openid, nickname, avatar, best_score, best_round, best_wave_gain, updated_at
       FROM players
+      WHERE best_score > 0
       ORDER BY best_score DESC, updated_at ASC
       LIMIT ?
     `, [limit]);
