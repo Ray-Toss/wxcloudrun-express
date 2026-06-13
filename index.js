@@ -159,8 +159,10 @@ app.post("/api/login", async (req, res) => {
   try {
     const code = req.body && req.body.code;
     const openid = await resolveOpenid(req, code);
+    console.log("[login] ok openid=%s", openid.slice(0, 8));
     res.json({ ok: true, token: sign({ openid, ts: Date.now() }) });
   } catch (error) {
+    console.warn("[login] fail errMsg=%s", error.message);
     res.status(error.statusCode || 500).json({ ok: false, errMsg: error.message || "login failed" });
   }
 });
@@ -171,18 +173,40 @@ app.post("/api/score", auth, async (req, res) => {
     score.weekKey = currentWeekKey();
     const scoreError = validateScore(score);
     if (scoreError) {
+      console.warn("[score] reject openid=%s reason=%s score=%d round=%d", req.openid.slice(0, 8), scoreError, score.score, score.round);
       res.status(400).json({ ok: false, errMsg: scoreError });
       return;
     }
     const rateError = checkScoreSubmitRate(req.openid);
     if (rateError) {
+      console.warn("[score] rate-limited openid=%s", req.openid.slice(0, 8));
       res.status(429).json({ ok: false, errMsg: rateError });
       return;
     }
     const player = await store.upsertScore(req.openid, score);
+    console.log("[score] ok openid=%s score=%d round=%d weekKey=%s", req.openid.slice(0, 8), score.score, score.round, score.weekKey);
     res.json({ ok: true, player });
   } catch (error) {
+    console.error("[score] error openid=%s errMsg=%s", req.openid.slice(0, 8), error.message);
     res.status(500).json({ ok: false, errMsg: error.message || "score submit failed" });
+  }
+});
+
+app.post("/api/sync-best", auth, async (req, res) => {
+  try {
+    const score = cleanScore(req.body || {});
+    const scoreError = validateScore(score);
+    if (scoreError) {
+      console.warn("[sync-best] reject openid=%s reason=%s", req.openid.slice(0, 8), scoreError);
+      res.status(400).json({ ok: false, errMsg: scoreError });
+      return;
+    }
+    const player = await store.syncBestScore(req.openid, score);
+    console.log("[sync-best] ok openid=%s score=%d", req.openid.slice(0, 8), score.score);
+    res.json({ ok: true, player });
+  } catch (error) {
+    console.error("[sync-best] error openid=%s errMsg=%s", req.openid.slice(0, 8), error.message);
+    res.status(500).json({ ok: false, errMsg: error.message || "sync-best failed" });
   }
 });
 
@@ -198,23 +222,29 @@ app.post("/api/profile", auth, async (req, res) => {
 
 app.get("/api/leaderboard", async (req, res) => {
   try {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
     const limit = Math.max(1, Math.min(100, Math.floor(Number(req.query.limit) || 50)));
     const period = req.query.period === "history" ? "history" : "weekly";
     const weekKey = currentWeekKey();
     const list = await store.leaderboard(limit, period, weekKey);
+    console.log("[leaderboard] period=%s weekKey=%s count=%d", period, weekKey, list.length);
     res.json({ ok: true, list, period, weekKey });
   } catch (error) {
+    console.error("[leaderboard] error errMsg=%s", error.message);
     res.status(500).json({ ok: false, errMsg: error.message || "leaderboard failed" });
   }
 });
 
 app.get("/api/me/rank", auth, async (req, res) => {
   try {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
     const period = req.query.period === "history" ? "history" : "weekly";
     const weekKey = currentWeekKey();
     const rank = await store.myRank(req.openid, period, weekKey);
+    console.log("[me/rank] openid=%s period=%s weekKey=%s found=%s", req.openid.slice(0, 8), period, weekKey, !!rank);
     res.json({ ok: true, rank, period, weekKey });
   } catch (error) {
+    console.error("[me/rank] error errMsg=%s", error.message);
     res.status(500).json({ ok: false, errMsg: error.message || "rank failed" });
   }
 });

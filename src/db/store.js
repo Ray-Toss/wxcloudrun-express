@@ -61,6 +61,22 @@ class MemoryStore {
     return current;
   }
 
+  async syncBestScore(openid, score) {
+    const current = this.players.get(openid);
+    if (!current) return null;
+    if (score.score > current.best_score) {
+      current.best_score = score.score;
+      current.best_round = score.round;
+      current.best_wave_gain = score.bestWaveGain;
+      current.revived = !!score.revived;
+      current.updated_at = new Date().toISOString();
+    }
+    if (score.nickname) current.nickname = score.nickname;
+    if (score.avatar) current.avatar = score.avatar;
+    this.players.set(openid, current);
+    return current;
+  }
+
   async leaderboard(limit, period, weekKey) {
     const rows = [...this.players.values()];
     if (period === "weekly") {
@@ -214,6 +230,30 @@ class MysqlStore {
       score.bestWaveGain,
       score.revived ? 1 : 0,
       score.weekKey || "",
+      score.score,
+      score.round,
+      score.bestWaveGain,
+      score.revived ? 1 : 0,
+    ]);
+    const [rows] = await this.pool.execute("SELECT * FROM players WHERE openid = ?", [openid]);
+    return rows[0] || null;
+  }
+
+  async syncBestScore(openid, score) {
+    await this.pool.execute(`
+      INSERT INTO players (openid, nickname, avatar, best_score, best_round, best_wave_gain, revived)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        nickname = IF(VALUES(nickname) <> '', VALUES(nickname), nickname),
+        avatar = IF(VALUES(avatar) <> '', VALUES(avatar), avatar),
+        best_round = IF(VALUES(best_score) > best_score, VALUES(best_round), best_round),
+        best_wave_gain = IF(VALUES(best_score) > best_score, VALUES(best_wave_gain), best_wave_gain),
+        revived = IF(VALUES(best_score) > best_score, VALUES(revived), revived),
+        best_score = GREATEST(best_score, VALUES(best_score))
+    `, [
+      openid,
+      score.nickname || "",
+      score.avatar || "",
       score.score,
       score.round,
       score.bestWaveGain,
