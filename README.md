@@ -60,5 +60,5 @@ MYSQL_DATABASE=nodejs_demo
 - `/api/score` 会同时更新历史最高分和北京时间自然周周榜分数。
 - 同一 `openid` 默认 10 秒内最多提交一次分数，可通过
   `SCORE_SUBMIT_INTERVAL_MS` 调整。
-- 分数默认上限为 `5000000`，可通过 `MAX_REASONABLE_SCORE` 调整。
+- 分数无全局硬上限，但会根据轮次比例校验合理性（`score ≤ round × 25000 + 250000`）。
 - `ALLOW_MOCK_LOGIN=1` 仅在非生产环境生效。

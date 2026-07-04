@@ -10,7 +10,6 @@ const port = Number(process.env.PORT || 80);
 const tokenSecret = resolveTokenSecret();
 const scoreSubmitLimiter = new Map();
 const SCORE_SUBMIT_INTERVAL_MS = Number(process.env.SCORE_SUBMIT_INTERVAL_MS || 10000);
-const MAX_REASONABLE_SCORE = Number(process.env.MAX_REASONABLE_SCORE || 5000000);
 
 app.use(express.json({ limit: "64kb" }));
 
@@ -90,9 +89,9 @@ async function resolveOpenid(req, code) {
 
 function cleanScore(input) {
   return {
-    score: Math.max(0, Math.min(MAX_REASONABLE_SCORE, Math.floor(Number(input.score) || 0))),
+    score: Math.max(0, Math.floor(Number(input.score) || 0)),
     round: Math.max(1, Math.min(9999, Math.floor(Number(input.round) || 1))),
-    bestWaveGain: Math.max(0, Math.min(MAX_REASONABLE_SCORE, Math.floor(Number(input.bestWaveGain) || 0))),
+    bestWaveGain: Math.max(0, Math.floor(Number(input.bestWaveGain) || 0)),
     revived: !!input.revived,
     nickname: String(input.nickname || "").trim().slice(0, 64),
     avatar: String(input.avatar || "").trim().slice(0, 512),
@@ -124,7 +123,7 @@ function validateScore(score) {
     return "bestWaveGain exceeds score";
   }
   const roundCap = score.round * 25000 + 250000;
-  if (score.score > Math.min(MAX_REASONABLE_SCORE, roundCap)) {
+  if (score.score > roundCap) {
     return "score exceeds round limit";
   }
   return "";
