@@ -215,12 +215,12 @@ class MysqlStore {
         best_wave_gain = IF(VALUES(best_score) > best_score, VALUES(best_wave_gain), best_wave_gain),
         revived = IF(VALUES(best_score) > best_score, VALUES(revived), revived),
         best_score = GREATEST(best_score, VALUES(best_score)),
-        week_round = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, VALUES(week_round), week_round),
-        week_best_wave_gain = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, VALUES(week_best_wave_gain), week_best_wave_gain),
-        week_revived = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, VALUES(week_revived), week_revived),
-        week_updated_at = IF(week_key <> VALUES(week_key) OR VALUES(week_score) > week_score, CURRENT_TIMESTAMP, week_updated_at),
-        week_score = IF(week_key <> VALUES(week_key), VALUES(week_score), GREATEST(week_score, VALUES(week_score))),
-        week_key = VALUES(week_key)
+        week_key = VALUES(week_key),
+        week_round = IF(week_key <> VALUES(week_key), VALUES(week_round), IF(VALUES(week_score) > week_score, VALUES(week_round), week_round)),
+        week_best_wave_gain = IF(week_key <> VALUES(week_key), VALUES(week_best_wave_gain), IF(VALUES(week_score) > week_score, VALUES(week_best_wave_gain), week_best_wave_gain)),
+        week_revived = IF(week_key <> VALUES(week_key), VALUES(week_revived), IF(VALUES(week_score) > week_score, VALUES(week_revived), week_revived)),
+        week_updated_at = IF(week_key <> VALUES(week_key), CURRENT_TIMESTAMP, IF(VALUES(week_score) > week_score, CURRENT_TIMESTAMP, week_updated_at)),
+        week_score = IF(week_key <> VALUES(week_key), VALUES(week_score), GREATEST(week_score, VALUES(week_score)))
     `, [
       openid,
       score.nickname,
