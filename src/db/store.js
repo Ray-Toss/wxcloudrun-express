@@ -172,13 +172,14 @@ class MysqlStore {
         KEY idx_score (best_score DESC, updated_at ASC)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    await this.ensureColumn("week_key", "VARCHAR(16) NOT NULL DEFAULT ''");
-    await this.ensureColumn("week_score", "INT UNSIGNED NOT NULL DEFAULT 0");
-    await this.ensureColumn("week_round", "INT UNSIGNED NOT NULL DEFAULT 1");
-    await this.ensureColumn("week_best_wave_gain", "INT UNSIGNED NOT NULL DEFAULT 0");
-    await this.ensureColumn("week_revived", "TINYINT(1) NOT NULL DEFAULT 0");
-    await this.ensureColumn("week_updated_at", "TIMESTAMP NULL DEFAULT NULL");
-    await this.ensureIndex("idx_week_score", "week_key, week_score DESC, week_updated_at ASC");
+    // 跳过 ensureColumn，因为字段已经手动添加
+    // await this.ensureColumn("week_key", "VARCHAR(16) NOT NULL DEFAULT ''");
+    // await this.ensureColumn("week_score", "INT UNSIGNED NOT NULL DEFAULT 0");
+    // await this.ensureColumn("week_round", "INT UNSIGNED NOT NULL DEFAULT 1");
+    // await this.ensureColumn("week_best_wave_gain", "INT UNSIGNED NOT NULL DEFAULT 0");
+    // await this.ensureColumn("week_revived", "TINYINT(1) NOT NULL DEFAULT 0");
+    // await this.ensureColumn("week_updated_at", "TIMESTAMP NULL DEFAULT NULL");
+    // await this.ensureIndex("idx_week_score", "week_key, week_score DESC, week_updated_at ASC");
   }
 
   async ensureColumn(name, definition) {
