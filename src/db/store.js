@@ -182,7 +182,7 @@ class MysqlStore {
   }
 
   async ensureColumn(name, definition) {
-    const [rows] = await this.pool.execute("SHOW COLUMNS FROM players LIKE ?", [name]);
+    const [rows] = await this.pool.query(`SHOW COLUMNS FROM players LIKE '${name}'`);
     if (rows.length) return;
     await this.pool.query(`ALTER TABLE players ADD COLUMN ${name} ${definition}`);
   }
