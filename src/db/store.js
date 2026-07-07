@@ -349,7 +349,15 @@ class MysqlStore {
 }
 
 function createStore() {
-  if ((process.env.MYSQL_HOST || process.env.MYSQL_ADDRESS) && mysql) return new MysqlStore();
+  console.log("[store] MYSQL_HOST=%s, MYSQL_ADDRESS=%s, mysql=%s",
+    process.env.MYSQL_HOST || "undefined",
+    process.env.MYSQL_ADDRESS || "undefined",
+    mysql ? "loaded" : "not loaded");
+  if ((process.env.MYSQL_HOST || process.env.MYSQL_ADDRESS) && mysql) {
+    console.log("[store] using MysqlStore");
+    return new MysqlStore();
+  }
+  console.log("[store] using MemoryStore");
   return new MemoryStore();
 }
 
