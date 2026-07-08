@@ -39,6 +39,11 @@ class MemoryStore {
       week_round: 1,
       week_best_wave_gain: 0,
       week_revived: false,
+      day_key: "",
+      day_score: 0,
+      day_round: 1,
+      day_best_wave_gain: 0,
+      day_revived: false,
     };
     if (score.nickname) current.nickname = score.nickname;
     if (score.avatar) current.avatar = score.avatar;
@@ -56,6 +61,14 @@ class MemoryStore {
       current.week_best_wave_gain = score.bestWaveGain;
       current.week_revived = !!score.revived;
       current.week_updated_at = new Date().toISOString();
+    }
+    if (score.dayKey && (current.day_key !== score.dayKey || score.score > current.day_score)) {
+      current.day_key = score.dayKey;
+      current.day_score = score.score;
+      current.day_round = score.round;
+      current.day_best_wave_gain = score.bestWaveGain;
+      current.day_revived = !!score.revived;
+      current.day_updated_at = new Date().toISOString();
     }
     this.players.set(openid, current);
     return current;
@@ -77,11 +90,25 @@ class MemoryStore {
     return current;
   }
 
-  async leaderboard(limit, period, weekKey) {
+  async leaderboard(limit, period, periodKey) {
     const rows = [...this.players.values()];
+    if (period === "daily") {
+      return rows
+        .filter((item) => item.day_key === periodKey && item.day_score > 0)
+        .sort((a, b) => b.day_score - a.day_score)
+        .slice(0, limit)
+        .map((item, index) => publicPlayer({
+          ...item,
+          best_score: item.day_score,
+          best_round: item.day_round,
+          best_wave_gain: item.day_best_wave_gain,
+          revived: item.day_revived,
+          updated_at: item.day_updated_at,
+        }, index + 1));
+    }
     if (period === "weekly") {
       return rows
-        .filter((item) => item.week_key === weekKey && item.week_score > 0)
+        .filter((item) => item.week_key === periodKey && item.week_score > 0)
         .sort((a, b) => b.week_score - a.week_score)
         .slice(0, limit)
         .map((item, index) => publicPlayer({
@@ -108,14 +135,31 @@ class MemoryStore {
     return current;
   }
 
-  async myRank(openid, period, weekKey) {
+  async myRank(openid, period, periodKey) {
     const rows = [...this.players.values()];
     let sorted = rows;
     let target = this.players.get(openid);
-    if (period === "weekly") {
-      if (!target || target.week_key !== weekKey || !target.week_score) return null;
+    if (period === "daily") {
+      if (!target || target.day_key !== periodKey || !target.day_score) return null;
       sorted = rows
-        .filter((item) => item.week_key === weekKey && item.week_score > 0)
+        .filter((item) => item.day_key === periodKey && item.day_score > 0)
+        .sort((a, b) => b.day_score - a.day_score);
+      const index = sorted.findIndex((item) => item.openid === openid);
+      if (index < 0) return null;
+      target = sorted[index];
+      return publicPlayer({
+        ...target,
+        best_score: target.day_score,
+        best_round: target.day_round,
+        best_wave_gain: target.day_best_wave_gain,
+        revived: target.day_revived,
+        updated_at: target.day_updated_at,
+      }, index + 1);
+    }
+    if (period === "weekly") {
+      if (!target || target.week_key !== periodKey || !target.week_score) return null;
+      sorted = rows
+        .filter((item) => item.week_key === periodKey && item.week_score > 0)
         .sort((a, b) => b.week_score - a.week_score);
       const index = sorted.findIndex((item) => item.openid === openid);
       if (index < 0) return null;
@@ -206,9 +250,10 @@ class MysqlStore {
       INSERT INTO players (
         openid, nickname, avatar,
         best_score, best_round, best_wave_gain, revived,
-        week_key, week_score, week_round, week_best_wave_gain, week_revived, week_updated_at
+        week_key, week_score, week_round, week_best_wave_gain, week_revived, week_updated_at,
+        day_key, day_score, day_round, day_best_wave_gain, day_revived, day_updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON DUPLICATE KEY UPDATE
         nickname = IF(VALUES(nickname) <> '', VALUES(nickname), nickname),
         avatar = IF(VALUES(avatar) <> '', VALUES(avatar), avatar),
@@ -221,7 +266,13 @@ class MysqlStore {
         week_best_wave_gain = IF(week_key <> VALUES(week_key), VALUES(week_best_wave_gain), IF(VALUES(week_score) > week_score, VALUES(week_best_wave_gain), week_best_wave_gain)),
         week_revived = IF(week_key <> VALUES(week_key), VALUES(week_revived), IF(VALUES(week_score) > week_score, VALUES(week_revived), week_revived)),
         week_updated_at = IF(week_key <> VALUES(week_key), CURRENT_TIMESTAMP, IF(VALUES(week_score) > week_score, CURRENT_TIMESTAMP, week_updated_at)),
-        week_score = IF(week_key <> VALUES(week_key), VALUES(week_score), GREATEST(week_score, VALUES(week_score)))
+        week_score = IF(week_key <> VALUES(week_key), VALUES(week_score), GREATEST(week_score, VALUES(week_score))),
+        day_key = VALUES(day_key),
+        day_round = IF(day_key <> VALUES(day_key), VALUES(day_round), IF(VALUES(day_score) > day_score, VALUES(day_round), day_round)),
+        day_best_wave_gain = IF(day_key <> VALUES(day_key), VALUES(day_best_wave_gain), IF(VALUES(day_score) > day_score, VALUES(day_best_wave_gain), day_best_wave_gain)),
+        day_revived = IF(day_key <> VALUES(day_key), VALUES(day_revived), IF(VALUES(day_score) > day_score, VALUES(day_revived), day_revived)),
+        day_updated_at = IF(day_key <> VALUES(day_key), CURRENT_TIMESTAMP, IF(VALUES(day_score) > day_score, CURRENT_TIMESTAMP, day_updated_at)),
+        day_score = IF(day_key <> VALUES(day_key), VALUES(day_score), GREATEST(day_score, VALUES(day_score)))
     `, [
       openid,
       score.nickname,
@@ -231,6 +282,11 @@ class MysqlStore {
       score.bestWaveGain,
       score.revived ? 1 : 0,
       score.weekKey || "",
+      score.score,
+      score.round,
+      score.bestWaveGain,
+      score.revived ? 1 : 0,
+      score.dayKey || "",
       score.score,
       score.round,
       score.bestWaveGain,
@@ -264,7 +320,24 @@ class MysqlStore {
     return rows[0] || null;
   }
 
-  async leaderboard(limit, period, weekKey) {
+  async leaderboard(limit, period, periodKey) {
+    if (period === "daily") {
+      const [rows] = await this.pool.execute(`
+        SELECT
+          openid,
+          nickname,
+          avatar,
+          day_score AS best_score,
+          day_round AS best_round,
+          day_best_wave_gain AS best_wave_gain,
+          day_updated_at AS updated_at
+        FROM players
+        WHERE day_key = ? AND day_score > 0
+        ORDER BY day_score DESC, day_updated_at ASC
+        LIMIT ?
+      `, [periodKey, limit]);
+      return rows.map((item, index) => publicPlayer(item, index + 1));
+    }
     if (period === "weekly") {
       const [rows] = await this.pool.execute(`
         SELECT
@@ -279,7 +352,7 @@ class MysqlStore {
         WHERE week_key = ? AND week_score > 0
         ORDER BY week_score DESC, week_updated_at ASC
         LIMIT ?
-      `, [weekKey, limit]);
+      `, [periodKey, limit]);
       return rows.map((item, index) => publicPlayer(item, index + 1));
     }
     const [rows] = await this.pool.execute(`
@@ -304,11 +377,41 @@ class MysqlStore {
     return rows[0] || null;
   }
 
-  async myRank(openid, period, weekKey) {
+  async myRank(openid, period, periodKey) {
+    if (period === "daily") {
+      const [mine] = await this.pool.execute(
+        "SELECT day_score, day_updated_at FROM players WHERE openid = ? AND day_key = ? AND day_score > 0",
+        [openid, periodKey]
+      );
+      if (!mine.length) return null;
+      const [rankRows] = await this.pool.execute(`
+        SELECT COUNT(*) + 1 AS rank
+        FROM players
+        WHERE day_key = ?
+          AND day_score > 0
+          AND (
+            day_score > ?
+            OR (day_score = ? AND day_updated_at < ?)
+          )
+      `, [periodKey, mine[0].day_score, mine[0].day_score, mine[0].day_updated_at]);
+      const [playerRows] = await this.pool.execute(`
+        SELECT
+          openid,
+          nickname,
+          avatar,
+          day_score AS best_score,
+          day_round AS best_round,
+          day_best_wave_gain AS best_wave_gain,
+          day_updated_at AS updated_at
+        FROM players
+        WHERE openid = ? AND day_key = ?
+      `, [openid, periodKey]);
+      return playerRows.length ? publicPlayer(playerRows[0], rankRows[0].rank) : null;
+    }
     if (period === "weekly") {
       const [mine] = await this.pool.execute(
         "SELECT week_score, week_updated_at FROM players WHERE openid = ? AND week_key = ? AND week_score > 0",
-        [openid, weekKey]
+        [openid, periodKey]
       );
       if (!mine.length) return null;
       const [rankRows] = await this.pool.execute(`
@@ -320,7 +423,7 @@ class MysqlStore {
             week_score > ?
             OR (week_score = ? AND week_updated_at < ?)
           )
-      `, [weekKey, mine[0].week_score, mine[0].week_score, mine[0].week_updated_at]);
+      `, [periodKey, mine[0].week_score, mine[0].week_score, mine[0].week_updated_at]);
       const [playerRows] = await this.pool.execute(`
         SELECT
           openid,
@@ -332,7 +435,7 @@ class MysqlStore {
           week_updated_at AS updated_at
         FROM players
         WHERE openid = ? AND week_key = ?
-      `, [openid, weekKey]);
+      `, [openid, periodKey]);
       return playerRows.length ? publicPlayer(playerRows[0], rankRows[0].rank) : null;
     }
     const [mine] = await this.pool.execute("SELECT best_score, updated_at FROM players WHERE openid = ? AND best_score > 0", [openid]);

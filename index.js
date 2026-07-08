@@ -111,6 +111,16 @@ function currentWeekKey(date) {
   return `${year}${month}${dateOfMonth}`;
 }
 
+function currentDayKey(date) {
+  const source = date || new Date();
+  const chinaTime = source.getTime() + 8 * 60 * 60 * 1000;
+  const chinaDate = new Date(chinaTime);
+  const year = chinaDate.getUTCFullYear();
+  const month = String(chinaDate.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(chinaDate.getUTCDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
 function validateScore(score) {
   if (!Number.isFinite(score.score) || !Number.isFinite(score.round) || !Number.isFinite(score.bestWaveGain)) {
     return "invalid score payload";
@@ -169,6 +179,7 @@ app.post("/api/score", auth, async (req, res) => {
   try {
     const score = cleanScore(req.body || {});
     score.weekKey = currentWeekKey();
+    score.dayKey = currentDayKey();
     const scoreError = validateScore(score);
     if (scoreError) {
       console.warn("[score] reject openid=%s reason=%s score=%d round=%d", req.openid.slice(0, 8), scoreError, score.score, score.round);
@@ -182,7 +193,7 @@ app.post("/api/score", auth, async (req, res) => {
       return;
     }
     const player = await store.upsertScore(req.openid, score);
-    console.log("[score] ok openid=%s score=%d round=%d weekKey=%s", req.openid.slice(0, 8), score.score, score.round, score.weekKey);
+    console.log("[score] ok openid=%s score=%d round=%d weekKey=%s dayKey=%s", req.openid.slice(0, 8), score.score, score.round, score.weekKey, score.dayKey);
     res.json({ ok: true, player });
   } catch (error) {
     console.error("[score] error openid=%s errMsg=%s", req.openid.slice(0, 8), error.message);
@@ -222,11 +233,12 @@ app.get("/api/leaderboard", async (req, res) => {
   try {
     res.set("Cache-Control", "no-store, no-cache, must-revalidate");
     const limit = Math.max(1, Math.min(100, Math.floor(Number(req.query.limit) || 50)));
-    const period = req.query.period === "history" ? "history" : "weekly";
-    const weekKey = currentWeekKey();
-    const list = await store.leaderboard(limit, period, weekKey);
-    console.log("[leaderboard] period=%s weekKey=%s count=%d", period, weekKey, list.length);
-    res.json({ ok: true, list, period, weekKey });
+    const period = req.query.period === "daily" ? "daily"
+      : req.query.period === "history" ? "history" : "weekly";
+    const periodKey = period === "daily" ? currentDayKey() : currentWeekKey();
+    const list = await store.leaderboard(limit, period, periodKey);
+    console.log("[leaderboard] period=%s periodKey=%s count=%d", period, periodKey, list.length);
+    res.json({ ok: true, list, period, periodKey });
   } catch (error) {
     console.error("[leaderboard] error errMsg=%s", error.message);
     res.status(500).json({ ok: false, errMsg: error.message || "leaderboard failed" });
@@ -236,11 +248,12 @@ app.get("/api/leaderboard", async (req, res) => {
 app.get("/api/me/rank", auth, async (req, res) => {
   try {
     res.set("Cache-Control", "no-store, no-cache, must-revalidate");
-    const period = req.query.period === "history" ? "history" : "weekly";
-    const weekKey = currentWeekKey();
-    const rank = await store.myRank(req.openid, period, weekKey);
-    console.log("[me/rank] openid=%s period=%s weekKey=%s found=%s", req.openid.slice(0, 8), period, weekKey, !!rank);
-    res.json({ ok: true, rank, period, weekKey });
+    const period = req.query.period === "daily" ? "daily"
+      : req.query.period === "history" ? "history" : "weekly";
+    const periodKey = period === "daily" ? currentDayKey() : currentWeekKey();
+    const rank = await store.myRank(req.openid, period, periodKey);
+    console.log("[me/rank] openid=%s period=%s periodKey=%s found=%s", req.openid.slice(0, 8), period, periodKey, !!rank);
+    res.json({ ok: true, rank, period, periodKey });
   } catch (error) {
     console.error("[me/rank] error errMsg=%s", error.message);
     res.status(500).json({ ok: false, errMsg: error.message || "rank failed" });
